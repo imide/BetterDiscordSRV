@@ -1,0 +1,8 @@
+name: BetterDiscordSRV
+version: '1.0.0'
+main: com.earthpol.betterDiscordSRV.BetterDiscordSRV
+api-version: '1.21'
+commands:
+  discord:
+    description: Link your Minecraft account to Discord
+    usage: /<command> link

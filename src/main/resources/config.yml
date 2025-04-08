@@ -1,0 +1,13 @@
+database:
+  host: "192.168.1.215"
+  port: 3306
+  user: "betterdiscordsrv"
+  password: "xvNARjClG72cClCS!"
+  database: "discord"
+
+discord:
+  token: "MTIwNDIwNjM3MjI3MTQyNzY3NQ.GKEAxf.D1plhpUiompBzmvb8PioV1C3GfAWr0IPvUYn-c"
+  client_id: "1204206372271427675"
+
+link:
+  url: "https://earthpol.com/linking/link.php?uuid={uuid}&mc_code={code}"
