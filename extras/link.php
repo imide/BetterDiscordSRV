@@ -1,8 +1,8 @@
 <?php
 // Enable error reporting during development (disable in production)
-// ini_set('display_errors', 1);
-// ini_set('display_startup_errors', 1);
-// error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
 
 // Start PHP session to store the state and Minecraft link info.
 session_start();
@@ -15,15 +15,16 @@ $clientSecret = 'sZz7A5nIycWow18b8Mrra8SeX5vVFJ0I';
 $redirectURI = 'https://earthpol.com/linking/link.php';
 
 // INITIAL STAGE: The user is sent here from the Minecraft plugin.
-// Expect parameters: uuid and mc_code.
+// Expect parameters: uuid, mc_code, and mc_username.
 if (!isset($_GET['state'])) {
-    if (!isset($_GET['uuid']) || !isset($_GET['mc_code'])) {
-        die("Missing required parameters. (Expected: uuid and mc_code)");
+    if (!isset($_GET['uuid']) || !isset($_GET['mc_code']) || !isset($_GET['mc_username'])) {
+        die("Missing required parameters. (Expected: uuid, mc_code, and mc_username)");
     }
 
-    // Store the Minecraft UUID and linking code (mc_code) in the session.
+    // Store the Minecraft UUID, linking code, and username in the session.
     $_SESSION['minecraft_uuid'] = $_GET['uuid'];
     $_SESSION['minecraft_code'] = $_GET['mc_code'];
+    $_SESSION['minecraft_username'] = $_GET['mc_username'];
 
     // Generate a random state parameter for OAuth to prevent CSRF.
     $state = bin2hex(random_bytes(16));
@@ -98,6 +99,7 @@ if (!isset($_GET['state'])) {
     // Retrieve the Minecraft info from the session.
     $minecraftUUID = $_SESSION['minecraft_uuid'];
     $minecraftCode = $_SESSION['minecraft_code'];
+    $minecraftUsername = $_SESSION['minecraft_username'];
 
     // --- DATABASE PART ---
     // Database credentials (update these to match your environment).
@@ -114,9 +116,9 @@ if (!isset($_GET['state'])) {
         die("Database connection failed: " . $e->getMessage());
     }
 
-    // Verify that there is a valid linking code for this Minecraft UUID.
-    $stmt = $pdo->prepare("SELECT * FROM discord_codes WHERE code = ? AND uuid = ?");
-    $stmt->execute([$minecraftCode, $minecraftUUID]);
+    // Verify that there is a valid linking code for this Minecraft account.
+    $stmt = $pdo->prepare("SELECT * FROM discord_codes WHERE code = ? AND uuid = ? AND expiration > ?");
+    $stmt->execute([$minecraftCode, $minecraftUUID, time()]);
     $codeRow = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if (!$codeRow) {
@@ -135,16 +137,28 @@ if (!isset($_GET['state'])) {
     try {
         $stmt = $pdo->prepare("INSERT INTO discord_accounts (discord, uuid) VALUES (?, ?)");
         $stmt->execute([$discordID, $minecraftUUID]);
-        echo "Successfully linked Minecraft account (" . htmlspecialchars($minecraftUUID) .
-            ") with Discord account (" . htmlspecialchars($discordUsername) . ", ID: " .
-            htmlspecialchars($discordID) . ").";
     } catch (PDOException $e) {
         die("Failed to insert linking data into the database: " . $e->getMessage());
     }
-    // --- END DATABASE PART ---
+
+    // --- INSERT A NOTIFICATION ---
+    // Insert a record into discord_notification so the Minecraft server can notify the user.
+    try {
+        $notifQuery = "INSERT INTO discord_notification (discord, uuid, mc_username, discord_username, timestamp) VALUES (?, ?, ?, ?, ?)";
+        $stmt = $pdo->prepare($notifQuery);
+        $stmt->execute([$discordID, $minecraftUUID, $minecraftUsername, $discordUsername, time()]);
+    } catch (PDOException $e) {
+        // Log the error, but don't fail the process.
+        error_log("Failed to insert notification: " . $e->getMessage());
+    }
+
+    // Echo confirmation.
+    echo "Successfully linked Minecraft account (" . htmlspecialchars($minecraftUUID) .
+        ") with Discord account (" . htmlspecialchars($discordUsername) . ", ID: " .
+        htmlspecialchars($discordID) . ").";
 
     // Clear session variables and remove the state cookie.
-    unset($_SESSION['oauth_state'], $_SESSION['minecraft_uuid'], $_SESSION['minecraft_code']);
+    unset($_SESSION['oauth_state'], $_SESSION['minecraft_uuid'], $_SESSION['minecraft_code'], $_SESSION['minecraft_username']);
     setcookie("oauth_state", "", time() - 3600, "/");
 }
 ?>

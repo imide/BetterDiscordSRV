@@ -58,9 +58,10 @@ public class DiscordCommand implements CommandExecutor {
 
                     // Build the clickable link text.
                     String rawLink = plugin.getConfig().getString("link.url",
-                                    "https://example.com/link.php?uuid={uuid}&code={code}")
+                                    " https://earthpol.com/linking/link.php?uuid={uuid}&mc_code={code}&mc_username={mc_username}")
                             .replace("{uuid}", uuid)
-                            .replace("{code}", code);
+                            .replace("{code}", code)
+                            .replace("{mc_username}", player.getName());
 
                     // Inform the player (with colored messages).
                     player.sendMessage(ChatColor.AQUA + "Your Discord linking code is: " + ChatColor.GOLD + code);

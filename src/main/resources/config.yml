@@ -10,4 +10,4 @@ discord:
   client_id: "1204206372271427675"
 
 link:
-  url: "https://earthpol.com/linking/link.php?uuid={uuid}&mc_code={code}"
+  url: "https://earthpol.com/linking/link.php?uuid={uuid}&mc_code={code}&mc_username={mc_username}"

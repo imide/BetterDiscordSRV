@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.*;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -53,6 +55,17 @@ public class SQLManager {
                 "uuid VARCHAR(36) NOT NULL UNIQUE" +
                 ");";
 
+        // Create notification table for pending link completion notifications.
+        String createNotificationTable = "CREATE TABLE IF NOT EXISTS discord_notification (" +
+                "id INT AUTO_INCREMENT PRIMARY KEY," +
+                "discord VARCHAR(32) NOT NULL," +
+                "uuid VARCHAR(36) NOT NULL," +
+                "mc_username VARCHAR(50) NOT NULL," +
+                "discord_username VARCHAR(64) NOT NULL," +
+                "timestamp BIGINT NOT NULL" +
+                ");";
+
+        stmt.executeUpdate(createNotificationTable);
         stmt.executeUpdate(createCodesTable);
         stmt.executeUpdate(createAccountsTable);
         stmt.close();
@@ -171,6 +184,80 @@ public class SQLManager {
             }
             final String finalResult = resultMessage;
             Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> callback.accept(finalResult));
+        });
+    }
+
+    public static class Notification {
+        private final int id;
+        private final String discord;
+        private final String uuid;
+        private final String mcUsername;
+        private final String discordUsername;
+
+        public Notification(int id, String discord, String uuid, String mcUsername, String discordUsername) {
+            this.id = id;
+            this.discord = discord;
+            this.uuid = uuid;
+            this.mcUsername = mcUsername;
+            this.discordUsername = discordUsername;
+        }
+
+        public int getId() { return id; }
+        public String getDiscord() { return discord; }
+        public String getUuid() { return uuid; }
+        public String getMcUsername() { return mcUsername; }
+        public String getDiscordUsername() { return discordUsername; }
+    }
+
+    // Insert a notification into the table.
+    public static void insertDiscordNotification(String discord, String uuid, String mcUsername, String discordUsername) {
+        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+            String query = "INSERT INTO discord_notification (discord, uuid, mc_username, discord_username, timestamp) VALUES (?, ?, ?, ?, ?)";
+            try (PreparedStatement ps = connection.prepareStatement(query)) {
+                ps.setString(1, discord);
+                ps.setString(2, uuid);
+                ps.setString(3, mcUsername);
+                ps.setString(4, discordUsername);
+                ps.setLong(5, System.currentTimeMillis());
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        });
+    }
+
+    // Get pending notifications using a callback that receives a list of Notification objects.
+    public static void getPendingNotifications(Consumer<List<Notification>> callback) {
+        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+            List<Notification> notifications = new ArrayList<>();
+            try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_notification")) {
+                ResultSet rs = ps.executeQuery();
+                while (rs.next()) {
+                    int id = rs.getInt("id");
+                    String discord = rs.getString("discord");
+                    String uuid = rs.getString("uuid");
+                    String mcUsername = rs.getString("mc_username");
+                    String discordUsername = rs.getString("discord_username");
+                    notifications.add(new Notification(id, discord, uuid, mcUsername, discordUsername));
+                }
+                rs.close();
+            } catch(SQLException e) {
+                e.printStackTrace();
+            }
+            Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> callback.accept(notifications));
+        });
+    }
+
+    // Delete a notification by its ID.
+    public static void deleteNotification(int id) {
+        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+            String query = "DELETE FROM discord_notification WHERE id = ?";
+            try (PreparedStatement ps = connection.prepareStatement(query)) {
+                ps.setInt(1, id);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
         });
     }
 }

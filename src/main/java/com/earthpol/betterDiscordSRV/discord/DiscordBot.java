@@ -30,4 +30,13 @@ public class DiscordBot {
             jda.shutdown();
         }
     }
+
+    public void sendDM(String discordId, String message) {
+        jda.retrieveUserById(discordId).queue(user -> {
+            user.openPrivateChannel().queue(channel -> {
+                channel.sendMessage(message).queue();
+            });
+        });
+    }
+
 }

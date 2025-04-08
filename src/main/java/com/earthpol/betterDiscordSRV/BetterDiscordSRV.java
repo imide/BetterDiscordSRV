@@ -2,6 +2,7 @@ package com.earthpol.betterDiscordSRV;
 
 import com.earthpol.betterDiscordSRV.commands.DiscordCommand;
 import com.earthpol.betterDiscordSRV.discord.DiscordBot;
+import com.earthpol.betterDiscordSRV.tasks.NotificationTask;
 import com.earthpol.betterDiscordSRV.util.SQLManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -26,6 +27,8 @@ public final class BetterDiscordSRV extends JavaPlugin {
             discordBot = new DiscordBot(token);
             getLogger().info("Discord bot initialized successfully.");
         }
+
+        getServer().getScheduler().runTaskTimer(this, new NotificationTask(this, discordBot), 20L * 5, 20L * 60);
 
         getLogger().info("BetterDiscordSRV enabled!");
     }
