@@ -7,10 +7,14 @@ import com.earthpol.betterDiscordSRV.util.SQLManager;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.SQLException;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public final class BetterDiscordSRV extends JavaPlugin {
 
     private DiscordBot discordBot;
+    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
     @Override
     public void onEnable() {
@@ -28,7 +32,9 @@ public final class BetterDiscordSRV extends JavaPlugin {
             getLogger().info("Discord bot initialized successfully.");
         }
 
-        getServer().getScheduler().runTaskTimer(this, new NotificationTask(this, discordBot), 20L * 5, 20L * 60);
+        scheduler.schedule(() -> {
+            new NotificationTask(this, discordBot);
+        }, 15, TimeUnit.SECONDS);
 
         getLogger().info("BetterDiscordSRV enabled!");
     }

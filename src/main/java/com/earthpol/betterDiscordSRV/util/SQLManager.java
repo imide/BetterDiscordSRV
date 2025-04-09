@@ -1,6 +1,6 @@
 package com.earthpol.betterDiscordSRV.util;
 
-import org.bukkit.Bukkit;
+import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.*;
@@ -14,6 +14,8 @@ public class SQLManager {
 
     private static Connection connection;
 
+    private static AsyncScheduler asyncScheduler;
+
     // Cache mapping linking code to player's username.
     private static final Map<String, String> codeUsernameCache = new ConcurrentHashMap<>();
 
@@ -25,6 +27,8 @@ public class SQLManager {
         String database = plugin.getConfig().getString("database.database");
 
         String url = "jdbc:mysql://" + host + ":" + port + "/" + database + "?useSSL=false";
+
+        asyncScheduler = plugin.getServer().getAsyncScheduler();
 
         try {
             connection = DriverManager.getConnection(url, user, password);
@@ -91,7 +95,8 @@ public class SQLManager {
     }
 
     public static void insertDiscordCode(String code, String uuid, long expiration) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "INSERT INTO discord_codes (code, uuid, expiration) VALUES (?, ?, ?)";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
                 ps.setString(1, code);
@@ -119,7 +124,8 @@ public class SQLManager {
 
     // Delete the code so it can't be reused.
     public static void deleteDiscordCode(String code) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "DELETE FROM discord_codes WHERE code = ?";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
                 ps.setString(1, code);
@@ -132,7 +138,8 @@ public class SQLManager {
 
     // Insert the final linking into discord_accounts.
     public static void insertDiscordAccount(String discordId, String uuid) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "INSERT INTO discord_accounts (discord, uuid) VALUES (?, ?)";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
                 ps.setString(1, discordId);
@@ -146,7 +153,7 @@ public class SQLManager {
 
     // Check asynchronously if a Minecraft UUID is already linked.
     public static void isAlreadyLinked(String uuid, Consumer<Boolean> callback) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             try {
                 PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_accounts WHERE uuid = ?");
                 ps.setString(1, uuid);
@@ -154,9 +161,13 @@ public class SQLManager {
                 boolean exists = rs.next();
                 rs.close();
                 ps.close();
-                Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> callback.accept(exists));
+                asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task1 -> {
+                    callback.accept(exists);
+                });
             } catch (SQLException e) {
-                Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> callback.accept(false));
+                asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task1 -> {
+                    callback.accept(false);
+                });
             }
         });
     }
@@ -164,7 +175,7 @@ public class SQLManager {
     // Query the discord_accounts table based on a given column (either "discord" or "uuid")
     // and return a result string via callback.
     public static void queryLinkedAccount(String column, String value, Consumer<String> callback) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String resultMessage = "";
             try {
                 PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_accounts WHERE " + column + " = ?");
@@ -183,7 +194,10 @@ public class SQLManager {
                 resultMessage = "Database error: " + e.getMessage();
             }
             final String finalResult = resultMessage;
-            Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> callback.accept(finalResult));
+
+            asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task1 -> {
+                callback.accept(finalResult);
+            });
         });
     }
 
@@ -211,7 +225,8 @@ public class SQLManager {
 
     // Insert a notification into the table.
     public static void insertDiscordNotification(String discord, String uuid, String mcUsername, String discordUsername) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "INSERT INTO discord_notification (discord, uuid, mc_username, discord_username, timestamp) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
                 ps.setString(1, discord);
@@ -228,29 +243,33 @@ public class SQLManager {
 
     // Get pending notifications using a callback that receives a list of Notification objects.
     public static void getPendingNotifications(Consumer<List<Notification>> callback) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
-            List<Notification> notifications = new ArrayList<>();
-            try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_notification")) {
-                ResultSet rs = ps.executeQuery();
-                while (rs.next()) {
-                    int id = rs.getInt("id");
-                    String discord = rs.getString("discord");
-                    String uuid = rs.getString("uuid");
-                    String mcUsername = rs.getString("mc_username");
-                    String discordUsername = rs.getString("discord_username");
-                    notifications.add(new Notification(id, discord, uuid, mcUsername, discordUsername));
+
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
+                List<Notification> notifications = new ArrayList<>();
+                try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_notification")) {
+                    ResultSet rs = ps.executeQuery();
+                    while (rs.next()) {
+                        int id = rs.getInt("id");
+                        String discord = rs.getString("discord");
+                        String uuid = rs.getString("uuid");
+                        String mcUsername = rs.getString("mc_username");
+                        String discordUsername = rs.getString("discord_username");
+                        notifications.add(new Notification(id, discord, uuid, mcUsername, discordUsername));
+                    }
+                    rs.close();
+                } catch(SQLException e) {
+                    e.printStackTrace();
                 }
-                rs.close();
-            } catch(SQLException e) {
-                e.printStackTrace();
-            }
-            Bukkit.getScheduler().runTask(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> callback.accept(notifications));
+
+                asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task1 -> {
+                    callback.accept(notifications);
+                });
         });
     }
 
     // Delete a notification by its ID.
     public static void deleteNotification(int id) {
-        Bukkit.getScheduler().runTaskAsynchronously(JavaPlugin.getProvidingPlugin(SQLManager.class), () -> {
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "DELETE FROM discord_notification WHERE id = ?";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
                 ps.setInt(1, id);
