@@ -1,12 +1,14 @@
 package com.earthpol.betterDiscordSRV.util;
 
 import io.papermc.paper.threadedregions.scheduler.AsyncScheduler;
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.sql.*;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -277,6 +279,52 @@ public class SQLManager {
             } catch (SQLException e) {
                 e.printStackTrace();
             }
+        });
+    }
+
+    public static void getLinkedDiscordByMinecraft(String uuid, Consumer<Optional<String>> callback) {
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
+            Optional<String> result = Optional.empty();
+            try {
+                PreparedStatement ps = connection.prepareStatement("SELECT discord FROM discord_accounts WHERE uuid = ?");
+                ps.setString(1, uuid);
+                ResultSet rs = ps.executeQuery();
+                if(rs.next()){
+                    result = Optional.of(rs.getString("discord"));
+                }
+                rs.close();
+                ps.close();
+            } catch(SQLException e) {
+                e.printStackTrace();
+            }
+            // Switch back to main thread:
+            Optional<String> finalResult = result;
+            asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task1 -> {
+                        callback.accept(finalResult);
+                    });
+        });
+    }
+
+    // Query: For a given Discord ID, get the linked Minecraft UUID (if any).
+    public static void getLinkedMinecraftByDiscord(String discord, Consumer<Optional<String>> callback) {
+        asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
+            Optional<String> result = Optional.empty();
+            try {
+                PreparedStatement ps = connection.prepareStatement("SELECT uuid FROM discord_accounts WHERE discord = ?");
+                ps.setString(1, discord);
+                ResultSet rs = ps.executeQuery();
+                if(rs.next()){
+                    result = Optional.of(rs.getString("uuid"));
+                }
+                rs.close();
+                ps.close();
+            } catch(SQLException e) {
+                e.printStackTrace();
+            }
+            Optional<String> finalResult = result;
+            asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task1 -> {
+                callback.accept(finalResult);
+            });
         });
     }
 }
