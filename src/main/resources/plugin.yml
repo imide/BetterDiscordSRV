@@ -1,5 +1,5 @@
 name: BetterDiscordSRV
-version: '1.0.0'
+version: '${project.version}'
 main: com.earthpol.betterDiscordSRV.BetterDiscordSRV
 api-version: '1.21'
 folia-supported: true

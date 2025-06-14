@@ -11,13 +11,15 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
-public final class BetterDiscordSRV extends JavaPlugin {
+public class BetterDiscordSRV extends JavaPlugin {
 
     private DiscordBot discordBot;
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private static BetterDiscordSRV instance;
 
     @Override
     public void onEnable() {
+        instance = this;
         saveDefaultConfig();
         SQLManager.initialize(this);
 
@@ -52,5 +54,12 @@ public final class BetterDiscordSRV extends JavaPlugin {
             discordBot.shutdown();
         }
         getLogger().info("BetterDiscordSRV disabled!");
+    }
+
+    public String getToken() {
+        return getConfig().getString("discord.token");
+    }
+    public static BetterDiscordSRV getInstance() {
+        return instance;
     }
 }
