@@ -34,13 +34,15 @@ public class SQLManager {
 
         try {
             connection = DriverManager.getConnection(url, user, password);
-            plugin.getLogger().info("Database connected successfully!");
+            plugin.getLogger().info("✔️ Database connected successfully");
 
             // Create necessary tables if they don't exist.
             createTables(plugin);
 
         } catch (SQLException e) {
-            plugin.getLogger().severe("Could not connect to the database: " + e.getMessage());
+            plugin.getLogger().severe("❌ Fatal: cannot connect to database: " + e.getMessage());
+            // this will prevent any async tasks from ever running against a null connection
+            plugin.getServer().getPluginManager().disablePlugin(plugin);
         }
     }
 
