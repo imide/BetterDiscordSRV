@@ -71,9 +71,17 @@ public class SQLManager {
                 "timestamp BIGINT NOT NULL" +
                 ");";
 
+        String createHistoryTable = "CREATE TABLE IF NOT EXISTS discord_accounts_history ("
+                + "  id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "  discord_id VARCHAR(255) NOT NULL,"
+                + "  uuid VARCHAR(255) NOT NULL,"
+                + "  linked_at TIMESTAMP NOT NULL"
+                + ");";
+
         stmt.executeUpdate(createNotificationTable);
         stmt.executeUpdate(createCodesTable);
         stmt.executeUpdate(createAccountsTable);
+        stmt.executeUpdate(createHistoryTable);
         stmt.close();
 
         plugin.getLogger().info("Verified/created required SQL tables.");
@@ -140,15 +148,51 @@ public class SQLManager {
 
     // Insert the final linking into discord_accounts.
     public static void insertDiscordAccount(String discordId, String uuid) {
-
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
-            String query = "INSERT INTO discord_accounts (discord, uuid) VALUES (?, ?)";
-            try (PreparedStatement ps = connection.prepareStatement(query)) {
-                ps.setString(1, discordId);
-                ps.setString(2, uuid);
-                ps.executeUpdate();
+            try {
+                connection.setAutoCommit(false);
+
+                // 1) Archive old link (if any) into history
+                String backupSql =
+                        "INSERT INTO discord_accounts_history (discord, uuid, linked_at) "
+                                + "SELECT discord, uuid, CURRENT_TIMESTAMP "
+                                + "  FROM discord_accounts "
+                                + " WHERE discord = ? OR uuid = ?";
+                try (PreparedStatement ps = connection.prepareStatement(backupSql)) {
+                    ps.setString(1, discordId);
+                    ps.setString(2, uuid);
+                    ps.executeUpdate();
+                }
+
+                // 2) Delete the old row so we can re-insert
+                String deleteSql =
+                        "DELETE FROM discord_accounts "
+                                + " WHERE discord = ? OR uuid = ?";
+                try (PreparedStatement ps = connection.prepareStatement(deleteSql)) {
+                    ps.setString(1, discordId);
+                    ps.setString(2, uuid);
+                    ps.executeUpdate();
+                }
+
+                // 3) Insert the fresh link
+                String insertSql =
+                        "INSERT INTO discord_accounts (discord, uuid) VALUES (?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
+                    ps.setString(1, discordId);
+                    ps.setString(2, uuid);
+                    ps.executeUpdate();
+                }
+
+                connection.commit();
             } catch (SQLException e) {
+                try { connection.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
                 e.printStackTrace();
+            } finally {
+                try {
+                    connection.setAutoCommit(true);
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
             }
         });
     }
