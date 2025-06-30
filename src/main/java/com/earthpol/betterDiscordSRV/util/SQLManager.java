@@ -75,10 +75,10 @@ public class SQLManager {
 
         String createHistoryTable = "CREATE TABLE IF NOT EXISTS discord_accounts_history ("
                 + "  id BIGINT AUTO_INCREMENT PRIMARY KEY,"
-                + "  discord_id VARCHAR(255) NOT NULL,"
-                + "  uuid VARCHAR(255) NOT NULL,"
-                + "  linked_at TIMESTAMP NOT NULL"
-                + ");";
+                + "  discord VARCHAR(32) NOT NULL,"
+                + "  uuid VARCHAR(36) NOT NULL,"
+                + "  linked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                + ") ENGINE=InnoDB;";
 
         stmt.executeUpdate(createNotificationTable);
         stmt.executeUpdate(createCodesTable);
@@ -107,16 +107,35 @@ public class SQLManager {
     }
 
     public static void insertDiscordCode(String code, String uuid, long expiration) {
-
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
-            String query = "INSERT INTO discord_codes (code, uuid, expiration) VALUES (?, ?, ?)";
-            try (PreparedStatement ps = connection.prepareStatement(query)) {
-                ps.setString(1, code);
-                ps.setString(2, uuid);
-                ps.setLong(3, expiration);
-                ps.executeUpdate();
+            try {
+                connection.setAutoCommit(false);
+
+                // 1) Remove any previous pending code for this UUID
+                try (PreparedStatement del = connection.prepareStatement(
+                        "DELETE FROM discord_codes WHERE uuid = ?"
+                )) {
+                    del.setString(1, uuid);
+                    int deleted = del.executeUpdate();
+                    Bukkit.getLogger().info("BetterDiscordSRV – removed "+deleted+" old link codes for UUID "+uuid);
+                }
+
+                // 2) Insert the fresh code
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "INSERT INTO discord_codes (code, uuid, expiration) VALUES (?, ?, ?)"
+                )) {
+                    ps.setString(1, code);
+                    ps.setString(2, uuid);
+                    ps.setLong(3, expiration);
+                    ps.executeUpdate();
+                }
+
+                connection.commit();
             } catch (SQLException e) {
+                try { connection.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
                 e.printStackTrace();
+            } finally {
+                try { connection.setAutoCommit(true); } catch (SQLException ex) { ex.printStackTrace(); }
             }
         });
     }

@@ -14,6 +14,7 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextColor;
 import net.kyori.adventure.text.format.TextDecoration;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -73,13 +74,13 @@ public class DiscordMessageListener extends ListenerAdapter {
                     // OPTIONAL: also tell the user in-game if they're online
                     Player linkedPlayer = Bukkit.getPlayer(UUID.fromString(uuid));
                     if (linkedPlayer != null && linkedPlayer.isOnline()) {
-                        linkedPlayer.sendMessage(NamedTextColor.GREEN + "Your Discord account "
-                                + NamedTextColor.GOLD + event.getAuthor().getAsTag()
-                                + NamedTextColor.GREEN + " is now linked to your Minecraft username "
-                                + NamedTextColor.GOLD + username + NamedTextColor.GREEN + "!");
+                        linkedPlayer.sendMessage(ChatColor.GREEN + "Your Discord account "
+                                + ChatColor.GOLD + event.getAuthor()
+                                + ChatColor.GREEN + " is now linked to your Minecraft username "
+                                + ChatColor.GOLD + username + ChatColor.GREEN + "!");
                     }
                 } else {
-                    event.getChannel().sendMessage("Invalid or expired code.").queue();
+                    //event.getChannel().sendMessage("Invalid or expired code.").queue();
                 }
             } catch (SQLException e) {
                 e.printStackTrace();
