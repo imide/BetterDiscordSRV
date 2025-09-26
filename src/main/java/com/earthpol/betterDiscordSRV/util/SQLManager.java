@@ -15,13 +15,15 @@ import java.util.function.Consumer;
 public class SQLManager {
 
     private static Connection connection;
+    private static JavaPlugin plugin;
 
     private static AsyncScheduler asyncScheduler;
 
     // Cache mapping linking code to player's username.
     private static final Map<String, String> codeUsernameCache = new ConcurrentHashMap<>();
 
-    public static void initialize(JavaPlugin plugin) {
+    public static void initialize(JavaPlugin pl) {
+        plugin = pl;
         String host = plugin.getConfig().getString("database.host");
         int port = plugin.getConfig().getInt("database.port");
         String user = plugin.getConfig().getString("database.user");
@@ -34,17 +36,33 @@ public class SQLManager {
 
         try {
             connection = DriverManager.getConnection(url, user, password);
-            plugin.getLogger().info("Database connected successfully!");
+            plugin.getLogger().info("✔️ Database connected successfully");
 
             // Create necessary tables if they don't exist.
             createTables(plugin);
 
         } catch (SQLException e) {
-            plugin.getLogger().severe("Could not connect to the database: " + e.getMessage());
+            plugin.getLogger().severe("❌ Fatal: cannot connect to database: " + e.getMessage());
+            // this will prevent any async tasks from ever running against a null connection
+            plugin.getServer().getPluginManager().disablePlugin(plugin);
+        }
+    }
+
+    private static synchronized void ensureConnection() {
+        try {
+            if (connection == null || connection.isClosed() || !connection.isValid(2)) {
+                plugin.getLogger().warning("Database connection lost – reconnecting…");
+                initialize(plugin);
+            }
+        } catch (SQLException e) {
+            plugin.getLogger().severe("Error checking DB connection: " + e.getMessage());
+            initialize(plugin);
         }
     }
 
     private static void createTables(JavaPlugin plugin) throws SQLException {
+        ensureConnection();
+
         Statement stmt = connection.createStatement();
 
         // Enforce unique uuid for pending codes.
@@ -71,9 +89,17 @@ public class SQLManager {
                 "timestamp BIGINT NOT NULL" +
                 ");";
 
+        String createHistoryTable = "CREATE TABLE IF NOT EXISTS discord_accounts_history ("
+                + "  id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "  discord VARCHAR(32) NOT NULL,"
+                + "  uuid VARCHAR(36) NOT NULL,"
+                + "  linked_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP"
+                + ") ENGINE=InnoDB;";
+
         stmt.executeUpdate(createNotificationTable);
         stmt.executeUpdate(createCodesTable);
         stmt.executeUpdate(createAccountsTable);
+        stmt.executeUpdate(createHistoryTable);
         stmt.close();
 
         plugin.getLogger().info("Verified/created required SQL tables.");
@@ -97,22 +123,43 @@ public class SQLManager {
     }
 
     public static void insertDiscordCode(String code, String uuid, long expiration) {
-
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
-            String query = "INSERT INTO discord_codes (code, uuid, expiration) VALUES (?, ?, ?)";
-            try (PreparedStatement ps = connection.prepareStatement(query)) {
-                ps.setString(1, code);
-                ps.setString(2, uuid);
-                ps.setLong(3, expiration);
-                ps.executeUpdate();
+            try {
+                connection.setAutoCommit(false);
+
+                // 1) Remove any previous pending code for this UUID
+                try (PreparedStatement del = connection.prepareStatement(
+                        "DELETE FROM discord_codes WHERE uuid = ?"
+                )) {
+                    del.setString(1, uuid);
+                    int deleted = del.executeUpdate();
+                    Bukkit.getLogger().info("BetterDiscordSRV – removed "+deleted+" old link codes for UUID "+uuid);
+                }
+
+                // 2) Insert the fresh code
+                try (PreparedStatement ps = connection.prepareStatement(
+                        "INSERT INTO discord_codes (code, uuid, expiration) VALUES (?, ?, ?)"
+                )) {
+                    ps.setString(1, code);
+                    ps.setString(2, uuid);
+                    ps.setLong(3, expiration);
+                    ps.executeUpdate();
+                }
+
+                connection.commit();
             } catch (SQLException e) {
+                try { connection.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
                 e.printStackTrace();
+            } finally {
+                try { connection.setAutoCommit(true); } catch (SQLException ex) { ex.printStackTrace(); }
             }
         });
     }
 
     // Only return the code if it has not expired.
     public static ResultSet getDiscordCode(String code) {
+        ensureConnection();
         try {
             PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_codes WHERE code = ? AND expiration > ?");
             ps.setString(1, code);
@@ -126,7 +173,7 @@ public class SQLManager {
 
     // Delete the code so it can't be reused.
     public static void deleteDiscordCode(String code) {
-
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "DELETE FROM discord_codes WHERE code = ?";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
@@ -140,21 +187,59 @@ public class SQLManager {
 
     // Insert the final linking into discord_accounts.
     public static void insertDiscordAccount(String discordId, String uuid) {
-
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
-            String query = "INSERT INTO discord_accounts (discord, uuid) VALUES (?, ?)";
-            try (PreparedStatement ps = connection.prepareStatement(query)) {
-                ps.setString(1, discordId);
-                ps.setString(2, uuid);
-                ps.executeUpdate();
+            try {
+                connection.setAutoCommit(false);
+
+                // 1) Archive old link (if any) into history
+                String backupSql =
+                        "INSERT INTO discord_accounts_history (discord, uuid, linked_at) "
+                                + "SELECT discord, uuid, CURRENT_TIMESTAMP "
+                                + "  FROM discord_accounts "
+                                + " WHERE discord = ? OR uuid = ?";
+                try (PreparedStatement ps = connection.prepareStatement(backupSql)) {
+                    ps.setString(1, discordId);
+                    ps.setString(2, uuid);
+                    ps.executeUpdate();
+                }
+
+                // 2) Delete the old row so we can re-insert
+                String deleteSql =
+                        "DELETE FROM discord_accounts "
+                                + " WHERE discord = ? OR uuid = ?";
+                try (PreparedStatement ps = connection.prepareStatement(deleteSql)) {
+                    ps.setString(1, discordId);
+                    ps.setString(2, uuid);
+                    ps.executeUpdate();
+                }
+
+                // 3) Insert the fresh link
+                String insertSql =
+                        "INSERT INTO discord_accounts (discord, uuid) VALUES (?, ?)";
+                try (PreparedStatement ps = connection.prepareStatement(insertSql)) {
+                    ps.setString(1, discordId);
+                    ps.setString(2, uuid);
+                    ps.executeUpdate();
+                }
+
+                connection.commit();
             } catch (SQLException e) {
+                try { connection.rollback(); } catch (SQLException ex) { ex.printStackTrace(); }
                 e.printStackTrace();
+            } finally {
+                try {
+                    connection.setAutoCommit(true);
+                } catch (SQLException ex) {
+                    ex.printStackTrace();
+                }
             }
         });
     }
 
     // Check asynchronously if a Minecraft UUID is already linked.
     public static void isAlreadyLinked(String uuid, Consumer<Boolean> callback) {
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             try {
                 PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_accounts WHERE uuid = ?");
@@ -177,6 +262,7 @@ public class SQLManager {
     // Query the discord_accounts table based on a given column (either "discord" or "uuid")
     // and return a result string via callback.
     public static void queryLinkedAccount(String column, String value, Consumer<String> callback) {
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String resultMessage = "";
             try {
@@ -227,7 +313,7 @@ public class SQLManager {
 
     // Insert a notification into the table.
     public static void insertDiscordNotification(String discord, String uuid, String mcUsername, String discordUsername) {
-
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "INSERT INTO discord_notification (discord, uuid, mc_username, discord_username, timestamp) VALUES (?, ?, ?, ?, ?)";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
@@ -245,7 +331,7 @@ public class SQLManager {
 
     // Get pending notifications using a callback that receives a list of Notification objects.
     public static void getPendingNotifications(Consumer<List<Notification>> callback) {
-
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
                 List<Notification> notifications = new ArrayList<>();
                 try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM discord_notification")) {
@@ -271,6 +357,7 @@ public class SQLManager {
 
     // Delete a notification by its ID.
     public static void deleteNotification(int id) {
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             String query = "DELETE FROM discord_notification WHERE id = ?";
             try (PreparedStatement ps = connection.prepareStatement(query)) {
@@ -283,6 +370,7 @@ public class SQLManager {
     }
 
     public static void getLinkedDiscordByMinecraft(String uuid, Consumer<Optional<String>> callback) {
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             Optional<String> result = Optional.empty();
             try {
@@ -307,6 +395,7 @@ public class SQLManager {
 
     // Query: For a given Discord ID, get the linked Minecraft UUID (if any).
     public static void getLinkedMinecraftByDiscord(String discord, Consumer<Optional<String>> callback) {
+        ensureConnection();
         asyncScheduler.runNow(JavaPlugin.getProvidingPlugin(SQLManager.class), task -> {
             Optional<String> result = Optional.empty();
             try {

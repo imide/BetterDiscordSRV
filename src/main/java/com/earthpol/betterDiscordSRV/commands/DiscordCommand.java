@@ -40,46 +40,39 @@ public class DiscordCommand implements CommandExecutor {
 
             final String uuid = player.getUniqueId().toString();
             // First, check if this account is already linked.
-            SQLManager.isAlreadyLinked(uuid, linked -> {
-                if (linked) {
-                    player.sendMessage(ChatColor.RED + "Your Minecraft account is already linked!");
-                    return;
-                } else {
-                    // Not linked, so generate a new code.
-                    String code = String.format("%06d", new Random().nextInt(1_000_000));
-                    // Expiration time: current time + 15 minutes (in milliseconds)
-                    long expiration = System.currentTimeMillis() + (15 * 60 * 1000);
+            // Not linked, so generate a new code.
+            String code = String.format("%06d", new Random().nextInt(1_000_000));
+            // Expiration time: current time + 15 minutes (in milliseconds)
+            long expiration = System.currentTimeMillis() + (15 * 60 * 1000);
 
-                    // Cache the code with the player's username.
-                    SQLManager.cacheCode(code, player.getName());
+            // Cache the code with the player's username.
+            SQLManager.cacheCode(code, player.getName());
 
-                    // Store the code in the SQL database asynchronously.
-                    SQLManager.insertDiscordCode(code, uuid, expiration);
+            // Store the code in the SQL database asynchronously.
+            SQLManager.insertDiscordCode(code, uuid, expiration);
 
-                    // Build the clickable link text.
-                    String rawLink = plugin.getConfig().getString("link.url",
-                                    " https://earthpol.com/linking/link.php?uuid={uuid}&mc_code={code}&mc_username={mc_username}")
-                            .replace("{uuid}", uuid)
-                            .replace("{code}", code)
-                            .replace("{mc_username}", player.getName());
+            // Build the clickable link text.
+            String rawLink = plugin.getConfig().getString("link.url",
+            " https://earthpol.com/linking/link.php?uuid={uuid}&mc_code={code}&mc_username={mc_username}")
+                    .replace("{uuid}", uuid)
+                    .replace("{code}", code)
+                    .replace("{mc_username}", player.getName());
 
                     // Inform the player (with colored messages).
-                    player.sendMessage(ChatColor.AQUA + "Your Discord linking code is: " + ChatColor.GOLD + code);
+            player.sendMessage(ChatColor.AQUA + "Your Discord linking code is: " + ChatColor.GOLD + code);
 
-                    TextComponent mainMessage = new TextComponent(ChatColor.AQUA + "Link your account by messaging this code to our Discord bot or by [");
-                    TextComponent clickMe = new TextComponent(ChatColor.GREEN + "Clicking this Link");
-                    TextComponent closingBracket = new TextComponent(ChatColor.AQUA + "]");
+            TextComponent mainMessage = new TextComponent(ChatColor.AQUA + "Link your account by messaging this code to our Discord bot or by [");
+            TextComponent clickMe = new TextComponent(ChatColor.GREEN + "Clicking this Link");
+            TextComponent closingBracket = new TextComponent(ChatColor.AQUA + "]");
 
-                    clickMe.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, rawLink));
-                    clickMe.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                            new BaseComponent[]{ new TextComponent("Click to open your linking page!") }));
+            clickMe.setClickEvent(new ClickEvent(ClickEvent.Action.OPEN_URL, rawLink));
+            clickMe.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                    new BaseComponent[]{ new TextComponent("Click to open your linking page!") }));
 
-                    mainMessage.addExtra(clickMe);
-                    mainMessage.addExtra(closingBracket);
+            mainMessage.addExtra(clickMe);
+            mainMessage.addExtra(closingBracket);
 
-                    player.spigot().sendMessage(mainMessage);
-                }
-            });
+            player.spigot().sendMessage(mainMessage);
             return true;
         }
 
