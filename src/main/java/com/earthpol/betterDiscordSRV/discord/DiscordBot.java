@@ -4,6 +4,7 @@ import net.dv8tion.jda.api.JDA;
 import net.dv8tion.jda.api.JDABuilder;
 import net.dv8tion.jda.api.requests.GatewayIntent;
 
+import java.time.Duration;
 import java.util.EnumSet;
 
 public class DiscordBot {
@@ -27,7 +28,14 @@ public class DiscordBot {
     // Call this method on plugin disable to shutdown JDA gracefully.
     public void shutdown() {
         if (jda != null) {
-            jda.shutdown();
+            jda.shutdownNow();
+            try {
+                jda.awaitShutdown(Duration.ofSeconds(10));
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                jda = null;
+            }
         }
     }
 
