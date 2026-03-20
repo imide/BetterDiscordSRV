@@ -18,9 +18,15 @@
 
     <distributionManagement>
         <repository>
-            <id>github</id>
-            <url>https://maven.pkg.github.com/EarthPol/BetterDiscordSRV</url>
+            <id>epmc-releases</id>
+            <name>Nexus Releases</name>
+            <url>https://nexus.bitworksmc.com/repository/epmc-releases/</url>
         </repository>
+        <snapshotRepository>
+            <id>epmc-snapshots</id>
+            <name>Nexus Snapshots</name>
+            <url>https://nexus.bitworksmc.com/repository/epmc-snapshots/</url>
+        </snapshotRepository>
     </distributionManagement>
 
     <build>
@@ -66,7 +72,10 @@
             <id>sonatype</id>
             <url>https://oss.sonatype.org/content/groups/public/</url>
         </repository>
-
+        <repository>
+            <id>epmc-private</id>
+            <url>https://nexus.bitworksmc.com/repository/epmc-private/</url>
+        </repository>
     </repositories>
 
     <dependencies>
