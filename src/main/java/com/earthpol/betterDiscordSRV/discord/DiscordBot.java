@@ -18,8 +18,8 @@ public class DiscordBot {
                     .enableIntents(EnumSet.of(GatewayIntent.MESSAGE_CONTENT))
                     .build()
                     .awaitReady();
-            // Add the message listener after JDA is ready
-            jda.addEventListener(new DiscordMessageListener());
+            // BetterDiscordSRV now only handles DM-based account linking.
+            jda.addEventListener(new DiscordLinkListener());
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
