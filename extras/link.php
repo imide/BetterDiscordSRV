@@ -8,8 +8,8 @@ error_reporting(E_ALL);
 session_start();
 
 // Replace these with your actual Discord app credentials.
-$clientID = '1204206372271427675';
-$clientSecret = 'sZz7A5nIycWow18b8Mrra8SeX5vVFJ0I';
+$clientID = '';
+$clientSecret = '';
 
 // This redirect URI must match the one configured in your Discord Developer Portal.
 $redirectURI = 'https://earthpol.com/linking/link.php';
@@ -103,10 +103,10 @@ if (!isset($_GET['state'])) {
 
     // --- DATABASE PART ---
     // Database credentials (update these to match your environment).
-    $dbHost = '10.0.0.2';
-    $dbName = 'discord';
-    $dbUser = 'betterdiscordsrv';
-    $dbPass = 'xvNARjClG72cClCS!';
+    $dbHost = '';
+    $dbName = '';
+    $dbUser = '';
+    $dbPass = '!';
 
     try {
         $pdo = new PDO("mysql:host=$dbHost;dbname=$dbName;charset=utf8mb4", $dbUser, $dbPass, [
